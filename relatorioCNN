@@ -1,0 +1,107 @@
+import torch
+import torchvision
+import torchvision.transforms as transforms
+import torch.nn as nn
+import torch.optim as optim
+import matplotlib.pyplot as plt
+
+# Transformações para os dados
+transform_mnist = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
+transform_cifar10 = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+
+# Carregar os dados
+trainset_mnist = torchvision.datasets.MNIST(root='./data', train=True, download=True, transform=transform_mnist)
+trainloader_mnist = torch.utils.data.DataLoader(trainset_mnist, batch_size=64, shuffle=True)
+
+testset_mnist = torchvision.datasets.MNIST(root='./data', train=False, download=True, transform=transform_mnist)
+testloader_mnist = torch.utils.data.DataLoader(testset_mnist, batch_size=64, shuffle=False)
+
+trainset_cifar10 = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_cifar10)
+trainloader_cifar10 = torch.utils.data.DataLoader(trainset_cifar10, batch_size=64, shuffle=True)
+
+testset_cifar10 = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform_cifar10)
+testloader_cifar10 = torch.utils.data.DataLoader(testset_cifar10, batch_size=64, shuffle=False)
+
+# Rede neural simples
+class SimpleCNN(nn.Module):
+    def __init__(self, input_channels):
+        super(SimpleCNN, self).__init__()
+        self.conv1 = nn.Conv2d(input_channels, 32, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.fc1 = nn.Linear(64 * 7 * 7 if input_channels == 1 else 64 * 8 * 8, 128)
+        self.fc2 = nn.Linear(128, 10)
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        x = self.pool(self.relu(self.conv1(x)))
+        x = self.pool(self.relu(self.conv2(x)))
+        x = x.view(x.size(0), -1)
+        x = self.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
+
+# Função para treinar a rede
+def treinar_rede(trainloader, net, criterion, optimizer, num_epochs=10):
+    perdas = []
+
+    for epoch in range(num_epochs):
+        perda_acumulada = 0.0
+        for inputs, labels in trainloader:
+            optimizer.zero_grad()
+            outputs = net(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+
+            perda_acumulada += loss.item()
+
+        media_perda = perda_acumulada / len(trainloader)
+        perdas.append(media_perda)
+        print(f'Época {epoch+1}, Perda: {media_perda:.3f}')
+
+    return perdas
+
+# Função para avaliar a rede
+def avaliar_rede(net, testloader):
+    correto = 0
+    total = 0
+    with torch.no_grad():
+        for data in testloader:
+            imagens, labels = data
+            outputs = net(imagens)
+            _, previsto = torch.max(outputs.data, 1)
+            total += labels.size(0)
+            correto += (previsto == labels).sum().item()
+    return 100 * correto / total
+
+# Treinar e avaliar MNIST
+net_mnist = SimpleCNN(input_channels=1)
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.SGD(net_mnist.parameters(), lr=0.001, momentum=0.9)
+perdas_mnist = treinar_rede(trainloader_mnist, net_mnist, criterion, optimizer)
+
+plt.plot(perdas_mnist, label='Perda MNIST')
+plt.xlabel('Épocas')
+plt.ylabel('Perda')
+plt.title('Evolução da Perda - MNIST')
+plt.legend()
+plt.show()
+
+acuracia_mnist = avaliar_rede(net_mnist, testloader_mnist)
+print(f'Taxa de acerto MNIST: {acuracia_mnist:.2f}%')
+
+# Treinar e avaliar CIFAR10
+net_cifar10 = SimpleCNN(input_channels=3)
+optimizer = optim.SGD(net_cifar10.parameters(), lr=0.001, momentum=0.9)
+perdas_cifar10 = treinar_rede(trainloader_cifar10, net_cifar10, criterion, optimizer)
+
+plt.plot(perdas_cifar10, label='Perda CIFAR10')
+plt.xlabel('Épocas')
+plt.ylabel('Perda')
+plt.title('Evolução da Perda - CIFAR10')
+plt.legend()
+plt.show()
+
+acuracia_cifar10 = avaliar_rede(net_cifar10, testloader_cifar10)
+print(f'Taxa de acerto CIFAR10: {acuracia_cifar10:.2f}%')
